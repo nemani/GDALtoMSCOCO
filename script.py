@@ -94,6 +94,7 @@ if __name__ == '__main__':
 	filename = path.basename(tiff_input_path)
 	shp_filename = path.abspath("data/Somalia1_20180507_ST1.shp")
 	output_dir_path = path.abspath("output")
+	train_percent = 0.8 # 80%
 
 	# Set to array of bands to process
 	# If empty then all bands are processed
@@ -127,11 +128,22 @@ if __name__ == '__main__':
 		bands = range(1, tiff.RasterCount+1)
 
 	# Create a new dict for MSCOCO format
-	MSCOCO_Dict = dict()
+	MSCOCO_Dict_train = dict()
+	MSCOCO_Dict_test = dict()
 
 	# Add Info Data
-	MSCOCO_Dict['info'] = {
-						'about': 'Dataset for GeoTIFF and Polygon Annotations',
+	MSCOCO_Dict_test['info'] = {
+						'about': 'Test Dataset for GeoTIFF and Polygon Annotations',
+						'contributor': '',
+						'date_created': '',
+						'description': '',
+						'url': '',
+						'version': '',
+						'year': 2018
+						}
+
+	MSCOCO_Dict_train['info'] = {
+						'about': 'Train Dataset for GeoTIFF and Polygon Annotations',
 						'contributor': '',
 						'date_created': '',
 						'description': '',
@@ -141,13 +153,16 @@ if __name__ == '__main__':
 						}
 
 	# Add Categories Data
-	MSCOCO_Dict['categories'] = [{'id': 100, 'name': 'Object of Interest', 'supercategory': 'Object of Interest'}]
+	MSCOCO_Dict_test['categories'] = [{'id': 100, 'name': 'Object of Interest', 'supercategory': 'Object of Interest'}]
+	MSCOCO_Dict_train['categories'] = [{'id': 100, 'name': 'Object of Interest', 'supercategory': 'Object of Interest'}]
 
 	# Create List for Images
-	MSCOCO_Dict['images'] = []
+	MSCOCO_Dict_test['images'] = []
+	MSCOCO_Dict_train['images'] = []
 
 	# Create List for Annotations
-	MSCOCO_Dict['annotations'] = []
+	MSCOCO_Dict_test['annotations'] = []
+	MSCOCO_Dict_train['annotations'] = []
 	
 	# Calculate number of loops
 	loops = tuple(map(int, map(np.ceil, (input_size[0] / output_size[0], input_size[1] / output_size[1]))))
@@ -155,11 +170,20 @@ if __name__ == '__main__':
 	# trange === range + progressbar
 	for i in trange(loops[0], desc="X Offset"):
 		for j in trange(loops[1], desc="Y Offset"):
+
+			if np.random.random() > train_percent:
+				test_or_train = "Test"
+			else:
+				test_or_train = "Train"
+
 			# Create Image dict
 			img_dict = dict({})
 
 			# Calculate Photo ID
-			img_dict['id'] = len(MSCOCO_Dict['images']) + 1
+			if test_or_train == "Test":
+				img_dict['id'] = len(MSCOCO_Dict_test['images']) + 1
+			else:
+				img_dict['id'] = len(MSCOCO_Dict_train['images']) + 1
 
 			# filename_band = name of that bands file
 			img_dict['filename'] = "{}.jpg".format(img_dict['id'])
@@ -167,8 +191,12 @@ if __name__ == '__main__':
 			#  X -> Width, Y -> Height
 			img_dict['width'], img_dict['height'] = output_size
 
-			# Append it to MSCOCO 
-			MSCOCO_Dict['images'].append(img_dict)
+			# Append it to MSCOCO
+			if test_or_train == "Test":
+				MSCOCO_Dict_test['images'].append(img_dict)
+			else:
+				MSCOCO_Dict_train['images'].append(img_dict)
+
 
 			# Calculate Current Offset
 			offset = (i * output_size[0], j * output_size[1])
@@ -188,7 +216,12 @@ if __name__ == '__main__':
 						
 						# Create Annotations Object
 						annotations_dict = {}
-						annotations_dict['id'] = len(MSCOCO_Dict['annotations']) + 1
+
+						if test_or_train == "Test":
+							annotations_dict['id'] = len(MSCOCO_Dict_test['annotations']) + 1
+						else:
+							annotations_dict['id'] = len(MSCOCO_Dict_train['annotations']) + 1
+
 						annotations_dict['image_id'] = img_dict['id']
 						annotations_dict['category_id'] = 100
 						annotations_dict['area'] = float(intersection.GetArea())
@@ -197,14 +230,17 @@ if __name__ == '__main__':
 						annotations_dict['segmentation'] = GetSegmentationFromPolygon(intersection, gt, offset)
 						
 						# Append it to MSCOCO
-						MSCOCO_Dict['annotations'].append(annotations_dict)
+						if test_or_train == "Test":
+							MSCOCO_Dict_test['annotations'].append(annotations_dict)
+						else:
+							MSCOCO_Dict_train['annotations'].append(annotations_dict)
 
 				# Layer gets exhausted on reading. Need to reset it
 				lyr.ResetReading()
 
 
 			for band in bands:
-				dir_path = "{}/Band{}".format(output_dir_path, band)
+				dir_path = "{}/{}/Band{}".format(output_dir_path, test_or_train, band)
 
 				if not path.isdir(dir_path):
 					os.makedirs(dir_path, exist_ok=True)
@@ -225,4 +261,5 @@ if __name__ == '__main__':
 	tiff = None
 
 	# Dump the dict to a JSON file
-	json.dump(MSCOCO_Dict, open("annotations-small.json", 'w'))
+	json.dump(MSCOCO_Dict_test, open("{}/annotations-test.json".format(output_dir_path), 'w'))
+	json.dump(MSCOCO_Dict_train, open("{}/annotations-train.json".format(output_dir_path), 'w'))
